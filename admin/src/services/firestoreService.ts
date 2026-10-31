@@ -7,8 +7,16 @@ import {
   onSnapshot,
   updateDoc,
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, isFirebaseConfigured } from '../config/firebase';
 import { Brand, Category, Coupon, PartnerApplication, StoreLocation, User } from '../types';
+import {
+  INITIAL_APPLICATIONS,
+  INITIAL_BRANDS,
+  INITIAL_CATEGORIES,
+  INITIAL_COUPONS,
+  INITIAL_MESSAGES,
+  INITIAL_USERS,
+} from '../mockData';
 
 const stripId = <T extends object>(data: T) => {
   const { id: _id, ...rest } = data as T & { id?: string };
@@ -61,6 +69,26 @@ const normalizeCategory = (id: string, data: Partial<Category>): Category => ({
   createdAt: data.createdAt || null,
 });
 
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: 'unread' | 'read' | 'replied';
+  createdAt: any;
+}
+
+const normalizeContactMessage = (id: string, data: Partial<ContactMessage>): ContactMessage => ({
+  id,
+  name: data.name || 'Anonymous',
+  email: data.email || '',
+  subject: data.subject || '',
+  message: data.message || '',
+  status: data.status || 'unread',
+  createdAt: data.createdAt || null,
+});
+
 const cleanData = (data: any): any => {
   if (data === null || data === undefined) return undefined;
   if (data instanceof Date) return data;
@@ -80,8 +108,49 @@ const cleanData = (data: any): any => {
   return data;
 };
 
+// ============= LOCAL STORAGE HELPERS FOR DEMO/OFFLINE MODE =============
+
+function getLocalItems<T>(key: string, defaultItems: T[]): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+    localStorage.setItem(key, JSON.stringify(defaultItems));
+    return defaultItems;
+  } catch {
+    return defaultItems;
+  }
+}
+
+function setLocalItems<T>(key: string, items: T[]): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(items));
+    window.dispatchEvent(new CustomEvent('admin_local_sync', { detail: { key } }));
+  } catch (e) {
+    console.error('Local storage write error:', e);
+  }
+}
+
+function listenLocal<T>(key: string, defaultItems: T[], callback: (items: T[]) => void) {
+  callback(getLocalItems(key, defaultItems));
+  const handler = (e: any) => {
+    if (e.detail?.key === key) {
+      callback(getLocalItems(key, defaultItems));
+    }
+  };
+  window.addEventListener('admin_local_sync', handler);
+  return () => window.removeEventListener('admin_local_sync', handler);
+}
+
+// ============= COUPON SERVICE =============
+
 export const couponService = {
   async addCoupon(couponData: Omit<Coupon, 'id'> | Coupon) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_coupons', INITIAL_COUPONS);
+      const newItem = { ...couponData, id: 'c_' + Date.now() } as Coupon;
+      setLocalItems('admin_coupons', [newItem, ...items]);
+      return newItem;
+    }
     const data = stripId(couponData) as Omit<Coupon, 'id'>;
     const docRef = await addDoc(collection(db, 'coupons'), cleanData({
       ...data,
@@ -91,11 +160,25 @@ export const couponService = {
   },
 
   async getCoupons() {
-    const snapshot = await getDocs(collection(db, 'coupons'));
-    return snapshot.docs.map((document) => normalizeCoupon(document.id, document.data() as Partial<Coupon>));
+    if (!isFirebaseConfigured) {
+      return getLocalItems('admin_coupons', INITIAL_COUPONS);
+    }
+    try {
+      const snapshot = await getDocs(collection(db, 'coupons'));
+      const list = snapshot.docs.map((document) => normalizeCoupon(document.id, document.data() as Partial<Coupon>));
+      return list.length > 0 ? list : getLocalItems('admin_coupons', INITIAL_COUPONS);
+    } catch (e) {
+      console.warn('Firestore getCoupons failed, using local demo data:', e);
+      return getLocalItems('admin_coupons', INITIAL_COUPONS);
+    }
   },
 
   async updateCoupon(id: string, couponData: Partial<Coupon>) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_coupons', INITIAL_COUPONS);
+      setLocalItems('admin_coupons', items.map(c => c.id === id ? { ...c, ...couponData } : c));
+      return;
+    }
     await updateDoc(doc(db, 'coupons', id), cleanData({
       ...stripId(couponData),
       updatedAt: new Date(),
@@ -103,22 +186,43 @@ export const couponService = {
   },
 
   async deleteCoupon(id: string) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_coupons', INITIAL_COUPONS);
+      setLocalItems('admin_coupons', items.filter(c => c.id !== id));
+      return;
+    }
     await deleteDoc(doc(db, 'coupons', id));
   },
 
   listenToCoupons(callback: (coupons: Coupon[]) => void, onError?: (error: Error) => void) {
+    if (!isFirebaseConfigured) {
+      return listenLocal('admin_coupons', INITIAL_COUPONS, callback);
+    }
     return onSnapshot(
       collection(db, 'coupons'),
       (snapshot) => {
-        callback(snapshot.docs.map((document) => normalizeCoupon(document.id, document.data() as Partial<Coupon>)));
+        const list = snapshot.docs.map((document) => normalizeCoupon(document.id, document.data() as Partial<Coupon>));
+        callback(list.length > 0 ? list : getLocalItems('admin_coupons', INITIAL_COUPONS));
       },
-      (error) => onError?.(error)
+      (error) => {
+        console.warn('Firestore listenToCoupons failed, using local demo data:', error);
+        callback(getLocalItems('admin_coupons', INITIAL_COUPONS));
+        onError?.(error);
+      }
     );
   },
 };
 
+// ============= BRAND SERVICE =============
+
 export const brandService = {
   async addBrand(brandData: Omit<Brand, 'id'> | Brand) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_brands', INITIAL_BRANDS);
+      const newItem = { ...brandData, id: 'b_' + Date.now() } as Brand;
+      setLocalItems('admin_brands', [newItem, ...items]);
+      return newItem;
+    }
     const data = stripId(brandData) as Omit<Brand, 'id'>;
     const docRef = await addDoc(collection(db, 'brands'), cleanData({
       ...data,
@@ -128,11 +232,25 @@ export const brandService = {
   },
 
   async getBrands() {
-    const snapshot = await getDocs(collection(db, 'brands'));
-    return snapshot.docs.map((document) => normalizeBrand(document.id, document.data() as Partial<Brand>));
+    if (!isFirebaseConfigured) {
+      return getLocalItems('admin_brands', INITIAL_BRANDS);
+    }
+    try {
+      const snapshot = await getDocs(collection(db, 'brands'));
+      const list = snapshot.docs.map((document) => normalizeBrand(document.id, document.data() as Partial<Brand>));
+      return list.length > 0 ? list : getLocalItems('admin_brands', INITIAL_BRANDS);
+    } catch (e) {
+      console.warn('Firestore getBrands failed, using local demo data:', e);
+      return getLocalItems('admin_brands', INITIAL_BRANDS);
+    }
   },
 
   async updateBrand(id: string, brandData: Partial<Brand>) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_brands', INITIAL_BRANDS);
+      setLocalItems('admin_brands', items.map(b => b.id === id ? { ...b, ...brandData } : b));
+      return;
+    }
     await updateDoc(doc(db, 'brands', id), cleanData({
       ...stripId(brandData),
       updatedAt: new Date(),
@@ -140,20 +258,43 @@ export const brandService = {
   },
 
   async deleteBrand(id: string) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_brands', INITIAL_BRANDS);
+      setLocalItems('admin_brands', items.filter(b => b.id !== id));
+      return;
+    }
     await deleteDoc(doc(db, 'brands', id));
   },
 
   listenToBrands(callback: (brands: Brand[]) => void, onError?: (error: Error) => void) {
+    if (!isFirebaseConfigured) {
+      return listenLocal('admin_brands', INITIAL_BRANDS, callback);
+    }
     return onSnapshot(
       collection(db, 'brands'),
-      (snapshot) => callback(snapshot.docs.map((document) => normalizeBrand(document.id, document.data() as Partial<Brand>))),
-      (error) => onError?.(error)
+      (snapshot) => {
+        const list = snapshot.docs.map((document) => normalizeBrand(document.id, document.data() as Partial<Brand>));
+        callback(list.length > 0 ? list : getLocalItems('admin_brands', INITIAL_BRANDS));
+      },
+      (error) => {
+        console.warn('Firestore listenToBrands failed, using local demo data:', error);
+        callback(getLocalItems('admin_brands', INITIAL_BRANDS));
+        onError?.(error);
+      }
     );
   },
 };
 
+// ============= USER SERVICE =============
+
 export const userService = {
   async addUser(userData: Omit<User, 'id'> | User) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_users', INITIAL_USERS);
+      const newItem = { ...userData, id: 'u_' + Date.now(), status: userData.status || 'active' } as User;
+      setLocalItems('admin_users', [newItem, ...items]);
+      return newItem;
+    }
     const data = stripId(userData) as Omit<User, 'id'>;
     const docRef = await addDoc(collection(db, 'users'), cleanData({
       ...data,
@@ -164,11 +305,25 @@ export const userService = {
   },
 
   async getUsers() {
-    const snapshot = await getDocs(collection(db, 'users'));
-    return snapshot.docs.map((document) => normalizeUser(document.id, document.data() as Partial<User>));
+    if (!isFirebaseConfigured) {
+      return getLocalItems('admin_users', INITIAL_USERS);
+    }
+    try {
+      const snapshot = await getDocs(collection(db, 'users'));
+      const list = snapshot.docs.map((document) => normalizeUser(document.id, document.data() as Partial<User>));
+      return list.length > 0 ? list : getLocalItems('admin_users', INITIAL_USERS);
+    } catch (e) {
+      console.warn('Firestore getUsers failed, using local demo data:', e);
+      return getLocalItems('admin_users', INITIAL_USERS);
+    }
   },
 
   async updateUser(id: string, userData: Partial<User>) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_users', INITIAL_USERS);
+      setLocalItems('admin_users', items.map(u => u.id === id ? { ...u, ...userData } : u));
+      return;
+    }
     await updateDoc(doc(db, 'users', id), cleanData({
       ...stripId(userData),
       updatedAt: new Date(),
@@ -176,20 +331,43 @@ export const userService = {
   },
 
   async deleteUser(id: string) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_users', INITIAL_USERS);
+      setLocalItems('admin_users', items.filter(u => u.id !== id));
+      return;
+    }
     await deleteDoc(doc(db, 'users', id));
   },
 
   listenToUsers(callback: (users: User[]) => void, onError?: (error: Error) => void) {
+    if (!isFirebaseConfigured) {
+      return listenLocal('admin_users', INITIAL_USERS, callback);
+    }
     return onSnapshot(
       collection(db, 'users'),
-      (snapshot) => callback(snapshot.docs.map((document) => normalizeUser(document.id, document.data() as Partial<User>))),
-      (error) => onError?.(error)
+      (snapshot) => {
+        const list = snapshot.docs.map((document) => normalizeUser(document.id, document.data() as Partial<User>));
+        callback(list.length > 0 ? list : getLocalItems('admin_users', INITIAL_USERS));
+      },
+      (error) => {
+        console.warn('Firestore listenToUsers failed, using local demo data:', error);
+        callback(getLocalItems('admin_users', INITIAL_USERS));
+        onError?.(error);
+      }
     );
   },
 };
 
+// ============= CATEGORY SERVICE =============
+
 export const categoryService = {
   async addCategory(categoryData: Omit<Category, 'id'> | Category) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_categories', INITIAL_CATEGORIES);
+      const newItem = { ...categoryData, id: 'cat_' + Date.now(), createdAt: new Date() } as Category;
+      setLocalItems('admin_categories', [newItem, ...items]);
+      return newItem;
+    }
     const data = stripId(categoryData) as Omit<Category, 'id'>;
     const docRef = await addDoc(collection(db, 'categories'), cleanData({
       ...data,
@@ -199,11 +377,25 @@ export const categoryService = {
   },
 
   async getCategories() {
-    const snapshot = await getDocs(collection(db, 'categories'));
-    return snapshot.docs.map((document) => normalizeCategory(document.id, document.data() as Partial<Category>));
+    if (!isFirebaseConfigured) {
+      return getLocalItems('admin_categories', INITIAL_CATEGORIES);
+    }
+    try {
+      const snapshot = await getDocs(collection(db, 'categories'));
+      const list = snapshot.docs.map((document) => normalizeCategory(document.id, document.data() as Partial<Category>));
+      return list.length > 0 ? list : getLocalItems('admin_categories', INITIAL_CATEGORIES);
+    } catch (e) {
+      console.warn('Firestore getCategories failed, using local demo data:', e);
+      return getLocalItems('admin_categories', INITIAL_CATEGORIES);
+    }
   },
 
   async updateCategory(id: string, categoryData: Partial<Category>) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_categories', INITIAL_CATEGORIES);
+      setLocalItems('admin_categories', items.map(c => c.id === id ? { ...c, ...categoryData } : c));
+      return;
+    }
     await updateDoc(doc(db, 'categories', id), cleanData({
       ...stripId(categoryData),
       updatedAt: new Date(),
@@ -211,14 +403,29 @@ export const categoryService = {
   },
 
   async deleteCategory(id: string) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_categories', INITIAL_CATEGORIES);
+      setLocalItems('admin_categories', items.filter(c => c.id !== id));
+      return;
+    }
     await deleteDoc(doc(db, 'categories', id));
   },
 
   listenToCategories(callback: (categories: Category[]) => void, onError?: (error: Error) => void) {
+    if (!isFirebaseConfigured) {
+      return listenLocal('admin_categories', INITIAL_CATEGORIES, callback);
+    }
     return onSnapshot(
       collection(db, 'categories'),
-      (snapshot) => callback(snapshot.docs.map((document) => normalizeCategory(document.id, document.data() as Partial<Category>))),
-      (error) => onError?.(error)
+      (snapshot) => {
+        const list = snapshot.docs.map((document) => normalizeCategory(document.id, document.data() as Partial<Category>));
+        callback(list.length > 0 ? list : getLocalItems('admin_categories', INITIAL_CATEGORIES));
+      },
+      (error) => {
+        console.warn('Firestore listenToCategories failed, using local demo data:', error);
+        callback(getLocalItems('admin_categories', INITIAL_CATEGORIES));
+        onError?.(error);
+      }
     );
   },
 };
@@ -242,11 +449,43 @@ const normalizeApplication = (id: string, data: Partial<PartnerApplication>): Pa
 
 export const partnerApplicationService = {
   async getApplications() {
-    const snapshot = await getDocs(collection(db, 'partner_applications'));
-    return snapshot.docs.map((document) => normalizeApplication(document.id, document.data() as Partial<PartnerApplication>));
+    if (!isFirebaseConfigured) {
+      try {
+        const res = await fetch('/api/local-db');
+        if (res.ok) {
+          const db = await res.json();
+          if (Array.isArray(db.partner_applications) && db.partner_applications.length > 0) {
+            setLocalItems('admin_applications', db.partner_applications);
+            return db.partner_applications;
+          }
+        }
+      } catch {}
+      return getLocalItems('admin_applications', INITIAL_APPLICATIONS);
+    }
+    try {
+      const snapshot = await getDocs(collection(db, 'partner_applications'));
+      const list = snapshot.docs.map((document) => normalizeApplication(document.id, document.data() as Partial<PartnerApplication>));
+      return list.length > 0 ? list : getLocalItems('admin_applications', INITIAL_APPLICATIONS);
+    } catch (e) {
+      console.warn('Firestore getApplications failed, using local demo data:', e);
+      return getLocalItems('admin_applications', INITIAL_APPLICATIONS);
+    }
   },
 
   async updateApplication(id: string, data: Partial<PartnerApplication>) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_applications', INITIAL_APPLICATIONS);
+      const updated = items.map(a => a.id === id ? { ...a, ...data } : a);
+      setLocalItems('admin_applications', updated);
+      try {
+        await fetch('/api/local-db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partner_applications: updated }),
+        });
+      } catch {}
+      return;
+    }
     await updateDoc(doc(db, 'partner_applications', id), {
       ...data,
       updatedAt: new Date(),
@@ -254,49 +493,86 @@ export const partnerApplicationService = {
   },
 
   async deleteApplication(id: string) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_applications', INITIAL_APPLICATIONS);
+      const updated = items.filter(a => a.id !== id);
+      setLocalItems('admin_applications', updated);
+      try {
+        await fetch('/api/local-db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partner_applications: updated }),
+        });
+      } catch {}
+      return;
+    }
     await deleteDoc(doc(db, 'partner_applications', id));
   },
 
   listenToApplications(callback: (apps: PartnerApplication[]) => void, onError?: (error: Error) => void) {
+    if (!isFirebaseConfigured) {
+      const fetchFromBridge = async () => {
+        try {
+          const res = await fetch('/api/local-db');
+          if (res.ok) {
+            const db = await res.json();
+            if (Array.isArray(db.partner_applications)) {
+              setLocalItems('admin_applications', db.partner_applications);
+              callback(db.partner_applications);
+              return;
+            }
+          }
+        } catch {}
+        callback(getLocalItems('admin_applications', INITIAL_APPLICATIONS));
+      };
+      fetchFromBridge();
+      const interval = setInterval(fetchFromBridge, 2000);
+      const localUnsub = listenLocal('admin_applications', INITIAL_APPLICATIONS, callback);
+      return () => {
+        clearInterval(interval);
+        localUnsub();
+      };
+    }
     return onSnapshot(
       collection(db, 'partner_applications'),
-      (snapshot) => callback(snapshot.docs.map((document) => normalizeApplication(document.id, document.data() as Partial<PartnerApplication>))),
-      (error) => onError?.(error)
+      (snapshot) => {
+        const list = snapshot.docs.map((document) => normalizeApplication(document.id, document.data() as Partial<PartnerApplication>));
+        callback(list.length > 0 ? list : getLocalItems('admin_applications', INITIAL_APPLICATIONS));
+      },
+      (error) => {
+        console.warn('Firestore listenToApplications failed, using local demo data:', error);
+        callback(getLocalItems('admin_applications', INITIAL_APPLICATIONS));
+        onError?.(error);
+      }
     );
   },
 };
 
 // ============= CONTACT MESSAGES =============
 
-export interface ContactMessage {
-  id: string;
-  name: string;
-  email: string;
-  subject: string;
-  message: string;
-  status: 'unread' | 'read' | 'replied';
-  createdAt: any;
-}
-
-const normalizeContactMessage = (id: string, data: Partial<ContactMessage>): ContactMessage => ({
-  id,
-  name: data.name || 'Anonymous',
-  email: data.email || '',
-  subject: data.subject || '',
-  message: data.message || '',
-  status: data.status || 'unread',
-  createdAt: data.createdAt || null,
-});
-
 export const contactMessageService = {
   async getMessages() {
-    const snapshot = await getDocs(collection(db, 'contact_messages'));
-    return snapshot.docs.map((document) =>
-      normalizeContactMessage(document.id, document.data() as Partial<ContactMessage>)
-    );
+    if (!isFirebaseConfigured) {
+      return getLocalItems('admin_messages', INITIAL_MESSAGES);
+    }
+    try {
+      const snapshot = await getDocs(collection(db, 'contact_messages'));
+      const list = snapshot.docs.map((document) =>
+        normalizeContactMessage(document.id, document.data() as Partial<ContactMessage>)
+      );
+      return list.length > 0 ? list : getLocalItems('admin_messages', INITIAL_MESSAGES);
+    } catch (e) {
+      console.warn('Firestore getMessages failed, using local demo data:', e);
+      return getLocalItems('admin_messages', INITIAL_MESSAGES);
+    }
   },
 
   async updateMessage(id: string, data: Partial<ContactMessage>) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_messages', INITIAL_MESSAGES);
+      setLocalItems('admin_messages', items.map(m => m.id === id ? { ...m, ...data } : m));
+      return;
+    }
     await updateDoc(doc(db, 'contact_messages', id), {
       ...data,
       updatedAt: new Date(),
@@ -304,21 +580,31 @@ export const contactMessageService = {
   },
 
   async deleteMessage(id: string) {
+    if (!isFirebaseConfigured) {
+      const items = getLocalItems('admin_messages', INITIAL_MESSAGES);
+      setLocalItems('admin_messages', items.filter(m => m.id !== id));
+      return;
+    }
     await deleteDoc(doc(db, 'contact_messages', id));
   },
 
   listenToMessages(callback: (messages: ContactMessage[]) => void, onError?: (error: Error) => void) {
+    if (!isFirebaseConfigured) {
+      return listenLocal('admin_messages', INITIAL_MESSAGES, callback);
+    }
     return onSnapshot(
       collection(db, 'contact_messages'),
-      (snapshot) =>
-        callback(
-          snapshot.docs.map((document) =>
-            normalizeContactMessage(document.id, document.data() as Partial<ContactMessage>)
-          )
-        ),
-      (error) => onError?.(error)
+      (snapshot) => {
+        const list = snapshot.docs.map((document) =>
+          normalizeContactMessage(document.id, document.data() as Partial<ContactMessage>)
+        );
+        callback(list.length > 0 ? list : getLocalItems('admin_messages', INITIAL_MESSAGES));
+      },
+      (error) => {
+        console.warn('Firestore listenToMessages failed, using local demo data:', error);
+        callback(getLocalItems('admin_messages', INITIAL_MESSAGES));
+        onError?.(error);
+      }
     );
   },
 };
-
-

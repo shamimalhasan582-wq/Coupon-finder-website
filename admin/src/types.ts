@@ -19,8 +19,14 @@ export interface Coupon {
 }
 
 export interface StoreLocation {
+  id?: string;
   name: string;
   address: string;
+  phone?: string;
+  hours?: string;
+  distance?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface Brand {

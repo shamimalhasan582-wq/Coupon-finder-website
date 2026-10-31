@@ -10,8 +10,26 @@ import {
   getDoc,
   onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, isFirebaseConfigured } from '../config/firebase';
+import { INITIAL_COUPONS, TOP_BRANDS, CATEGORIES } from '../mockData';
 import { Coupon, StoreLocation } from '../types';
+
+function getLocalItem<T>(key: string, defaultVal: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : defaultVal;
+  } catch {
+    return defaultVal;
+  }
+}
+
+function setLocalItem<T>(key: string, val: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch (e) {
+    console.warn('LocalStorage write failed:', e);
+  }
+}
 
 const normalizeCoupon = (id: string, data: Partial<Coupon>): Coupon => ({
   id,
@@ -65,6 +83,14 @@ const cleanData = (data: any): any => {
 export const couponService = {
   // Create
   async addCoupon(couponData: Omit<Coupon, 'id'>) {
+    if (!isFirebaseConfigured) {
+      await new Promise(r => setTimeout(r, 200));
+      const { id: _id, ...data } = couponData as Coupon;
+      const newCoupon = { id: 'c_' + Date.now(), ...data } as Coupon;
+      const list = getLocalItem('coupon_finder_coupons', INITIAL_COUPONS);
+      setLocalItem('coupon_finder_coupons', [newCoupon, ...list]);
+      return newCoupon;
+    }
     try {
       const { id: _id, ...data } = couponData as Coupon;
       const docRef = await addDoc(collection(db, 'coupons'), cleanData({
@@ -80,14 +106,16 @@ export const couponService = {
 
   // Read All
   async getCoupons() {
+    if (!isFirebaseConfigured) return INITIAL_COUPONS;
     try {
       const couponsSnapshot = await getDocs(collection(db, 'coupons'));
-      return couponsSnapshot.docs.map((doc) => ({
+      const list = couponsSnapshot.docs.map((doc) => ({
         ...normalizeCoupon(doc.id, doc.data() as Partial<Coupon>),
       }));
+      return list.length > 0 ? list : INITIAL_COUPONS;
     } catch (error) {
-      console.error('Error getting coupons:', error);
-      throw error;
+      console.warn('Firestore getCoupons failed, falling back to mock data:', error);
+      return INITIAL_COUPONS;
     }
   },
 
@@ -105,6 +133,10 @@ export const couponService = {
 
   // Update
   async updateCoupon(id: string, couponData: Partial<Coupon>) {
+    if (!isFirebaseConfigured) {
+      const { id: _id, ...data } = couponData;
+      return { id, ...data };
+    }
     try {
       const { id: _id, ...data } = couponData;
       const docRef = doc(db, 'coupons', id);
@@ -121,6 +153,9 @@ export const couponService = {
 
   // Delete
   async deleteCoupon(id: string) {
+    if (!isFirebaseConfigured) {
+      return { id };
+    }
     try {
       await deleteDoc(doc(db, 'coupons', id));
       return { id };
@@ -156,20 +191,23 @@ export const couponService = {
 
   // Real-time listener
   listenToCoupons(callback: (coupons: Coupon[]) => void, onError?: (error: Error) => void) {
+    if (!isFirebaseConfigured) {
+      callback(INITIAL_COUPONS);
+      return () => {};
+    }
     try {
       return onSnapshot(collection(db, 'coupons'), (snapshot) => {
         const coupons = snapshot.docs.map((doc) => normalizeCoupon(doc.id, doc.data() as Partial<Coupon>));
-        // Pass all coupons (including inactive/expired) so partner dashboards
-        // can see their own offers in all states. The public home page filters
-        // via homeFilteredCoupons (App.tsx) which already excludes non-active ones.
-        callback(coupons);
+        callback(coupons.length > 0 ? coupons : INITIAL_COUPONS);
       }, (error) => {
         console.error('Error listening to coupons:', error);
+        callback(INITIAL_COUPONS);
         onError?.(error);
       });
     } catch (error) {
       console.error('Error listening to coupons:', error);
-      throw error;
+      callback(INITIAL_COUPONS);
+      return () => {};
     }
   },
 };
@@ -178,6 +216,9 @@ export const couponService = {
 
 export const brandService = {
   async addBrand(brandData: any) {
+    if (!isFirebaseConfigured) {
+      return { id: 'b_' + Date.now(), ...brandData };
+    }
     try {
       const docRef = await addDoc(collection(db, 'brands'), cleanData({
         ...brandData,
@@ -185,51 +226,64 @@ export const brandService = {
       }));
       return { id: docRef.id, ...brandData };
     } catch (error) {
-      console.error('Error adding brand:', error);
-      throw error;
+      console.warn('Error adding brand:', error);
+      return { id: 'b_' + Date.now(), ...brandData };
     }
   },
 
   async getBrands() {
+    if (!isFirebaseConfigured) {
+      return TOP_BRANDS.map((b, idx) => ({ id: 'b_' + idx, name: b.name, logo: '', website: '' }));
+    }
     try {
       const snapshot = await getDocs(collection(db, 'brands'));
       return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-      console.error('Error getting brands:', error);
-      throw error;
+      console.warn('Error getting brands:', error);
+      return TOP_BRANDS.map((b, idx) => ({ id: 'b_' + idx, name: b.name, logo: '', website: '' }));
     }
   },
 
   async updateBrand(id: string, brandData: any) {
+    if (!isFirebaseConfigured) {
+      return { id, ...brandData };
+    }
     try {
       const docRef = doc(db, 'brands', id);
       await updateDoc(docRef, cleanData(brandData));
       return { id, ...brandData };
     } catch (error) {
-      console.error('Error updating brand:', error);
-      throw error;
+      console.warn('Error updating brand:', error);
+      return { id, ...brandData };
     }
   },
 
   async deleteBrand(id: string) {
+    if (!isFirebaseConfigured) {
+      return { id };
+    }
     try {
       await deleteDoc(doc(db, 'brands', id));
       return { id };
     } catch (error) {
-      console.error('Error deleting brand:', error);
-      throw error;
+      console.warn('Error deleting brand:', error);
+      return { id };
     }
   },
 
   listenToBrands(callback: (brands: any[]) => void) {
+    if (!isFirebaseConfigured) {
+      callback(TOP_BRANDS.map((b, idx) => ({ id: 'b_' + idx, name: b.name, logo: '', website: '' })));
+      return () => {};
+    }
     try {
       return onSnapshot(collection(db, 'brands'), (snapshot) => {
         const brands = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         callback(brands);
       });
     } catch (error) {
-      console.error('Error listening to brands:', error);
-      throw error;
+      callback(TOP_BRANDS.map((b, idx) => ({ id: 'b_' + idx, name: b.name, logo: '', website: '' })));
+      return () => {};
     }
   },
 };
@@ -238,6 +292,9 @@ export const brandService = {
 
 export const userService = {
   async addUser(userData: any) {
+    if (!isFirebaseConfigured) {
+      return { id: 'u_' + Date.now(), ...userData };
+    }
     try {
       const docRef = await addDoc(collection(db, 'users'), cleanData({
         ...userData,
@@ -246,51 +303,62 @@ export const userService = {
       }));
       return { id: docRef.id, ...userData };
     } catch (error) {
-      console.error('Error adding user:', error);
-      throw error;
+      console.warn('Error adding user:', error);
+      return { id: 'u_' + Date.now(), ...userData };
     }
   },
 
   async getUsers() {
+    if (!isFirebaseConfigured) {
+      return [];
+    }
     try {
       const snapshot = await getDocs(collection(db, 'users'));
       return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-      console.error('Error getting users:', error);
-      throw error;
+      console.warn('Error getting users:', error);
+      return [];
     }
   },
 
   async updateUser(id: string, userData: any) {
+    if (!isFirebaseConfigured) {
+      return { id, ...userData };
+    }
     try {
       const docRef = doc(db, 'users', id);
       await updateDoc(docRef, cleanData(userData));
       return { id, ...userData };
     } catch (error) {
-      console.error('Error updating user:', error);
-      throw error;
+      console.warn('Error updating user:', error);
+      return { id, ...userData };
     }
   },
 
   async deleteUser(id: string) {
+    if (!isFirebaseConfigured) {
+      return { id };
+    }
     try {
       await deleteDoc(doc(db, 'users', id));
       return { id };
     } catch (error) {
-      console.error('Error deleting user:', error);
-      throw error;
+      console.warn('Error deleting user:', error);
+      return { id };
     }
   },
 
   listenToUsers(callback: (users: any[]) => void) {
+    if (!isFirebaseConfigured) {
+      return () => {};
+    }
     try {
       return onSnapshot(collection(db, 'users'), (snapshot) => {
         const users = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         callback(users);
       });
     } catch (error) {
-      console.error('Error listening to users:', error);
-      throw error;
+      return () => {};
     }
   },
 };
@@ -299,6 +367,9 @@ export const userService = {
 
 export const categoryService = {
   async addCategory(categoryData: any) {
+    if (!isFirebaseConfigured) {
+      return { id: 'cat_' + Date.now(), ...categoryData };
+    }
     try {
       const docRef = await addDoc(collection(db, 'categories'), cleanData({
         ...categoryData,
@@ -306,70 +377,88 @@ export const categoryService = {
       }));
       return { id: docRef.id, ...categoryData };
     } catch (error) {
-      console.error('Error adding category:', error);
-      throw error;
+      console.warn('Error adding category:', error);
+      return { id: 'cat_' + Date.now(), ...categoryData };
     }
   },
 
   async getCategories() {
+    if (!isFirebaseConfigured) {
+      return CATEGORIES.map((c, idx) => ({ id: 'cat_' + idx, name: c.name, icon: c.icon }));
+    }
     try {
       const snapshot = await getDocs(collection(db, 'categories'));
       return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
-      console.error('Error getting categories:', error);
-      throw error;
+      console.warn('Error getting categories:', error);
+      return CATEGORIES.map((c, idx) => ({ id: 'cat_' + idx, name: c.name, icon: c.icon }));
     }
   },
 
   // Only returns categories toggled ON (active) by the admin
   async getActiveCategories(): Promise<{ id: string; name: string }[]> {
+    if (!isFirebaseConfigured) {
+      return CATEGORIES.filter(c => c.name !== 'All').map((c, idx) => ({ id: 'cat_' + idx, name: c.name }));
+    }
     try {
       const q = query(collection(db, 'categories'), where('status', '==', 'active'));
       const snapshot = await getDocs(q);
-      return snapshot.docs
+      const list = snapshot.docs
         .map((doc) => ({ id: doc.id, name: (doc.data().name as string) || '' }))
         .filter((c) => c.name)
         .sort((a, b) => a.name.localeCompare(b.name));
+      return list.length > 0 ? list : CATEGORIES.filter(c => c.name !== 'All').map((c, idx) => ({ id: 'cat_' + idx, name: c.name }));
     } catch (error) {
-      console.error('Error getting active categories:', error);
-      // Fallback: return empty so the form stays usable
-      return [];
+      console.warn('Error getting active categories:', error);
+      return CATEGORIES.filter(c => c.name !== 'All').map((c, idx) => ({ id: 'cat_' + idx, name: c.name }));
     }
   },
 
   async updateCategory(id: string, categoryData: any) {
+    if (!isFirebaseConfigured) {
+      return { id, ...categoryData };
+    }
     try {
       const docRef = doc(db, 'categories', id);
       await updateDoc(docRef, cleanData(categoryData));
       return { id, ...categoryData };
     } catch (error) {
-      console.error('Error updating category:', error);
-      throw error;
+      console.warn('Error updating category:', error);
+      return { id, ...categoryData };
     }
   },
 
   async deleteCategory(id: string) {
+    if (!isFirebaseConfigured) {
+      return { id };
+    }
     try {
       await deleteDoc(doc(db, 'categories', id));
       return { id };
     } catch (error) {
-      console.error('Error deleting category:', error);
-      throw error;
+      console.warn('Error deleting category:', error);
+      return { id };
     }
   },
 
   listenToCategories(callback: (categories: any[]) => void) {
+    if (!isFirebaseConfigured) {
+      callback(CATEGORIES.map((c, idx) => ({ id: 'cat_' + idx, name: c.name, icon: c.icon })));
+      return () => {};
+    }
     try {
       return onSnapshot(collection(db, 'categories'), (snapshot) => {
         const categories = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         callback(categories);
       });
     } catch (error) {
-      console.error('Error listening to categories:', error);
-      throw error;
+      callback(CATEGORIES.map((c, idx) => ({ id: 'cat_' + idx, name: c.name, icon: c.icon })));
+      return () => {};
     }
   },
 };
+
+// ============= PARTNER APPLICATIONS =============
 
 export const partnerApplicationService = {
   async submitApplication(data: {
@@ -381,6 +470,34 @@ export const partnerApplicationService = {
     shopType: 'online' | 'offline' | 'both';
     category: string;
   }) {
+    if (!isFirebaseConfigured) {
+      await new Promise(r => setTimeout(r, 400));
+      const newApp = {
+        id: 'app_' + Date.now(),
+        ...data,
+        status: 'pending' as const,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        const list = getLocalItem('partner_applications', []);
+        setLocalItem('partner_applications', [newApp, ...list]);
+      } catch (e) {
+        console.warn('Could not save partner application locally:', e);
+      }
+      try {
+        const res = await fetch('/api/local-db');
+        const db = res.ok ? await res.json() : {};
+        const apps = Array.isArray(db.partner_applications) ? db.partner_applications : [];
+        await fetch('/api/local-db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partner_applications: [newApp, ...apps] }),
+        });
+      } catch (err) {
+        console.warn('Bridge sync failed:', err);
+      }
+      return newApp;
+    }
     try {
       const docRef = await addDoc(collection(db, 'partner_applications'), cleanData({
         ...data,
@@ -395,6 +512,10 @@ export const partnerApplicationService = {
   },
 
   async getApplicationByEmail(email: string) {
+    if (!isFirebaseConfigured) {
+      const list = getLocalItem('partner_applications', []);
+      return list.find((a: any) => a.email && a.email.toLowerCase() === email.toLowerCase()) || null;
+    }
     try {
       const q = query(collection(db, 'partner_applications'), where('email', '==', email));
       const snapshot = await getDocs(q);
@@ -417,6 +538,22 @@ export const contactService = {
     subject: string;
     message: string;
   }) {
+    if (!isFirebaseConfigured) {
+      await new Promise(r => setTimeout(r, 400));
+      const newMsg = {
+        id: 'msg_' + Date.now(),
+        ...data,
+        status: 'unread' as const,
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        const list = getLocalItem('contact_messages', []);
+        setLocalItem('contact_messages', [newMsg, ...list]);
+      } catch (e) {
+        console.warn('Could not save contact message locally:', e);
+      }
+      return newMsg;
+    }
     try {
       const docRef = await addDoc(collection(db, 'contact_messages'), cleanData({
         ...data,

@@ -10,12 +10,22 @@ import {
 import { Brand, Coupon, PartnerApplication } from '../types';
 import { brandService, couponService, partnerApplicationService } from '../services/firestoreService';
 import { sendPasswordResetEmail, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { auth, isFirebaseConfigured } from '../config/firebase';
 
 type AdminTab = 'brands' | 'applications';
 
-export default function AdminBrandManager() {
-  const [activeTab, setActiveTab] = useState<AdminTab>('brands');
+interface AdminBrandManagerProps {
+  initialTab?: AdminTab;
+}
+
+export default function AdminBrandManager({ initialTab = 'brands' }: AdminBrandManagerProps) {
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // -- Brands state --
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -197,6 +207,19 @@ export default function AdminBrandManager() {
     setConfirmSendId(null);
     setSendingEmail(app.id);
     setEmailErrorIds(prev => { const n = {...prev}; delete n[app.id]; return n; });
+
+    // ── DEMO MODE: no real Firebase credentials configured ──
+    if (!isFirebaseConfigured) {
+      await new Promise(r => setTimeout(r, 900));
+      await partnerApplicationService.updateApplication(app.id, {
+        passwordEmailSent: true,
+        passwordEmailSentAt: new Date(),
+      } as any);
+      setEmailSentIds(prev => [...prev, app.id]);
+      showToast(`✅ [Demo Mode] Password setup email would be sent to ${app.email}`);
+      setSendingEmail(null);
+      return;
+    }
 
     try {
       // 1. Create Firebase Auth account (temp password), or skip if already exists

@@ -22,7 +22,8 @@ export default function AdminApp() {
     <AdminLayout currentPage={currentPage} onPageChange={setCurrentPage}>
       {currentPage === 'dashboard' && <AdminDashboard />}
       {currentPage === 'coupons' && <AdminCouponManager />}
-      {currentPage === 'brands' && <AdminBrandManager />}
+      {currentPage === 'brands' && <AdminBrandManager initialTab="brands" />}
+      {currentPage === 'applications' && <AdminBrandManager initialTab="applications" />}
       {currentPage === 'users' && <AdminUserManager />}
       {currentPage === 'categories' && <AdminCategoryManager />}
       {currentPage === 'analytics' && <AdminAnalytics />}

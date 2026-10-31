@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "vite --port=3000 --host=0.0.0.0",
     "dev": "vite --port=3000 --host=0.0.0.0",
     "dev:admin": "vite admin --port=3001 --host=0.0.0.0",
     "build": "vite build",
@@ -12,7 +13,8 @@
     "preview": "vite preview",
     "preview:admin": "vite preview admin --config admin/vite.config.ts --outDir ../admin-dist",
     "clean": "rm -rf dist admin-dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "seed": "tsx scripts/seed-firestore.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

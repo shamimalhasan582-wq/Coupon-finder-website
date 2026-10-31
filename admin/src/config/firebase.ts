@@ -13,6 +13,13 @@ const firebaseConfig = {
 
 console.log('Firebase API Key in admin config:', firebaseConfig.apiKey);
 
+export const isFirebaseConfigured = Boolean(
+  import.meta.env.VITE_FIREBASE_API_KEY &&
+  import.meta.env.VITE_FIREBASE_API_KEY !== 'YOUR_API_KEY' &&
+  import.meta.env.VITE_FIREBASE_PROJECT_ID &&
+  import.meta.env.VITE_FIREBASE_PROJECT_ID !== 'YOUR_PROJECT_ID'
+);
+
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);

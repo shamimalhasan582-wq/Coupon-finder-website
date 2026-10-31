@@ -1,0 +1,64 @@
+{
+  "partner_applications": [
+    {
+      "id": "app_1793424523850",
+      "companyName": "Shamim 101",
+      "email": "shamimalhasan582@gmail.com",
+      "phone": "+8801817672626",
+      "address": "138 Gulbag, shyampur high school road",
+      "shopType": "online",
+      "category": "Fashion",
+      "status": "approved",
+      "createdAt": "2026-10-31T05:28:43.850Z",
+      "approvedAt": "2026-10-31T05:29:02.154Z",
+      "passwordEmailSent": true,
+      "passwordEmailSentAt": "2026-10-31T05:35:58.568Z"
+    },
+    {
+      "id": "app_1793424472633",
+      "companyName": "Shamim Al Hasan",
+      "email": "shamimalhasan582@gmail.com",
+      "phone": "+8801817672626",
+      "address": "138 Gulbag, shyampur high school road",
+      "shopType": "online",
+      "category": "Tech",
+      "status": "pending",
+      "createdAt": "2026-10-31T05:27:52.633Z"
+    },
+    {
+      "id": "app1",
+      "companyName": "Adidas North America",
+      "email": "partnerships@adidas.com",
+      "phone": "(555) 432-8765",
+      "website": "https://www.adidas.com",
+      "address": "5055 N Greeley Ave, Portland, OR",
+      "shopType": "both",
+      "category": "Fashion",
+      "status": "pending",
+      "createdAt": "2026-10-15T10:00:00.000Z"
+    },
+    {
+      "id": "app2",
+      "companyName": "Target Retail Stores",
+      "email": "promo@target.com",
+      "phone": "(555) 987-6543",
+      "website": "https://www.target.com",
+      "address": "1000 Nicollet Mall, Minneapolis, MN",
+      "shopType": "both",
+      "category": "Home",
+      "status": "pending",
+      "createdAt": "2026-10-20T12:00:00.000Z"
+    }
+  ],
+  "contact_messages": [
+    {
+      "id": "msg1",
+      "name": "Alice Walker",
+      "email": "alice.walker@example.com",
+      "subject": "coupon",
+      "message": "Hello, the Nike RUNFAST25 coupon is not applying at checkout on the outlet store. Could you please check if the terms have changed?",
+      "status": "unread",
+      "createdAt": "2026-10-28T14:30:00.000Z"
+    }
+  ]
+}

@@ -88,7 +88,7 @@ export default function App() {
   const [routeBrand, setRouteBrand] = useState('Nike');
 
   // Core dynamic coupon database state
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>(INITIAL_COUPONS);
   
   // Home query search parameters
   const [searchQuery, setSearchQuery] = useState('');

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { BarChart3, Home, LogOut, Menu, MessageSquare, Package, Tag, TrendingUp, Users, X } from 'lucide-react';
+import { BarChart3, FileText, Home, LogOut, Menu, MessageSquare, Package, Tag, TrendingUp, Users, X } from 'lucide-react';
 import { useAdmin } from '../context/AdminContext';
+import { isFirebaseConfigured } from '../config/firebase';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -17,6 +18,7 @@ export default function AdminLayout({ children, currentPage, onPageChange }: Adm
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'coupons', label: 'Coupon Manager', icon: Package },
     { id: 'brands', label: 'Brand Manager', icon: Tag },
+    { id: 'applications', label: 'Partner Applications', icon: FileText },
     { id: 'users', label: 'User Manager', icon: Users },
     { id: 'categories', label: 'Category Manager', icon: BarChart3 },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
@@ -79,8 +81,16 @@ export default function AdminLayout({ children, currentPage, onPageChange }: Adm
           <h2 className="text-2xl font-bold text-gray-800">
             {menuItems.find((item) => item.id === currentPage)?.label}
           </h2>
-          <div className="text-sm text-gray-600">
-            Welcome back, <span className="font-semibold">{admin?.email}</span>
+          <div className="text-sm text-gray-600 flex items-center gap-3">
+            {!isFirebaseConfigured && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                Demo / Local Mode
+              </span>
+            )}
+            <div>
+              Welcome back, <span className="font-semibold">{admin?.email}</span>
+            </div>
           </div>
         </div>
 

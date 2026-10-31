@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle, Eye, Package, Tag, Users } from 'lucide-react';
 import { Brand, Coupon, User } from '../types';
 import { brandService, couponService, userService } from '../services/firestoreService';
+import { isFirebaseConfigured } from '../config/firebase';
 
 interface DashboardStats {
   totalCoupons: number;
@@ -89,11 +90,15 @@ export default function AdminDashboard() {
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-xl font-bold text-gray-800 mb-4">System Status</h2>
         <div className="space-y-3">
-          {['Firestore Database', 'Admin Server', 'Data Storage'].map((label) => (
-            <div key={label} className="flex items-center justify-between">
-              <span className="text-gray-700">{label}</span>
-              <span className="flex items-center text-green-600 font-semibold">
-                <CheckCircle size={18} className="mr-2" /> Connected
+          {[
+            { label: 'Firestore Database', status: isFirebaseConfigured ? 'Connected' : 'Demo / Local Mode', ok: true },
+            { label: 'Admin Server', status: 'Connected', ok: true },
+            { label: 'Data Storage', status: isFirebaseConfigured ? 'Cloud Firestore' : 'Local Storage (Interactive)', ok: true },
+          ].map((item) => (
+            <div key={item.label} className="flex items-center justify-between">
+              <span className="text-gray-700">{item.label}</span>
+              <span className={`flex items-center font-semibold ${isFirebaseConfigured ? 'text-green-600' : 'text-emerald-600'}`}>
+                <CheckCircle size={18} className="mr-2" /> {item.status}
               </span>
             </div>
           ))}
